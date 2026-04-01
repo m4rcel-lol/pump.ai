@@ -3,6 +3,7 @@ import { Play, Pause, Square, RotateCcw, TrendingUp, MessageSquare, Activity as 
 import { motion, AnimatePresence } from 'motion/react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useSimulation, Memecoin, AI, Activity, GlobalEvent } from './hooks/useSimulation';
+import LandingPage from './components/LandingPage';
 
 function formatCurrency(value: number) {
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
@@ -48,15 +49,17 @@ type Tab = 'terminal' | 'agents' | 'market';
 type Inspection = { type: 'ai' | 'coin', id: string } | null;
 
 export default function App() {
-  const { status, ais, coins, activities, stats, marketHealthHistory, activeEvent, start, pause, end, restart } = useSimulation();
+  const { status, ais, coins, activities, stats, marketHealthHistory, activeEvent, start, pause, end, restart, isRecovered } = useSimulation();
   const [activeTab, setActiveTab] = useState<Tab>('terminal');
   const [inspection, setInspection] = useState<Inspection>(null);
+  const [showLanding, setShowLanding] = useState(!isRecovered);
 
-  useEffect(() => {
+  const handleEnterApp = () => {
     if (status === 'idle') {
       start();
     }
-  }, [status, start]);
+    setShowLanding(false);
+  };
 
   const { richestAI, topCoin } = useMemo(() => {
     if (status !== 'ended') return { richestAI: null, topCoin: null };
@@ -102,7 +105,17 @@ export default function App() {
   }, [stats.marketHealth]);
 
   return (
-    <div className={`min-h-screen bg-[#050505] text-gray-100 font-sans ${theme.selection} relative overflow-hidden transition-colors duration-1000`}>
+    <AnimatePresence mode="wait">
+      {showLanding ? (
+        <LandingPage key="landing" onEnter={handleEnterApp} />
+      ) : (
+        <motion.div 
+          key="app"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className={`min-h-screen bg-[#050505] text-gray-100 font-sans ${theme.selection} relative overflow-hidden transition-colors duration-1000`}
+        >
       {/* Background Effects */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute inset-0 bg-grid-pattern opacity-20" />
@@ -114,12 +127,15 @@ export default function App() {
       <header className="sticky top-0 z-40 glass-panel border-b border-gray-800/50 px-4 py-3 transition-colors duration-1000">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${theme.logoBg} flex items-center justify-center ${theme.logoShadow} transition-all duration-1000`}>
-                <TrendingUp className="w-5 h-5 text-black" />
+              <div className="flex items-center gap-2">
+                <div 
+                  onClick={() => setShowLanding(true)}
+                  className={`w-8 h-8 rounded-lg bg-gradient-to-br ${theme.logoBg} flex items-center justify-center ${theme.logoShadow} transition-all duration-1000 cursor-pointer hover:scale-110 active:scale-95`}
+                >
+                  <TrendingUp className="w-5 h-5 text-black" />
+                </div>
+                <h1 className={`text-xl font-bold tracking-tight ${theme.textGlow} transition-all duration-1000`}>pump.ai</h1>
               </div>
-              <h1 className={`text-xl font-bold tracking-tight ${theme.textGlow} transition-all duration-1000`}>pump.ai</h1>
-            </div>
 
             <nav className="hidden sm:flex items-center gap-1 bg-gray-900/50 p-1 rounded-lg border border-gray-800/50">
               <button onClick={() => setActiveTab('terminal')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === 'terminal' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}>
@@ -291,7 +307,9 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 

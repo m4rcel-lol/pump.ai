@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 export type AIPersonality = 'degen' | 'whale' | 'analytical' | 'troll';
 
@@ -74,6 +74,25 @@ const generateId = () => Math.random().toString(36).substring(2, 9);
 
 const getRandomItem = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
+const setCookie = (name: string, value: string, days: number) => {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+};
+
+const getCookie = (name: string) => {
+  return document.cookie.split('; ').reduce((r, v) => {
+    const parts = v.split('=');
+    return parts[0] === name ? decodeURIComponent(parts[1]) : r;
+  }, '');
+};
+
+const deleteCookie = (name: string) => {
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+};
+
+const STORAGE_KEY = 'pump_sim_state';
+const COOKIE_KEY = 'pump_sim_active';
+
 const generateCoinName = (existingCoins: Record<string, Memecoin>) => {
   const prefix = getRandomItem(COIN_PREFIXES);
   const suffix = Math.random() > 0.5 ? getRandomItem(COIN_SUFFIXES) : '';
@@ -96,19 +115,35 @@ const INITIAL_POOL_TOKENS = 1_000_000_000;
 const INITIAL_PRICE = INITIAL_POOL_MEOWNEY / INITIAL_POOL_TOKENS;
 
 export const useSimulation = () => {
-  const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'ended'>('idle');
-  const [ais, setAis] = useState<Record<string, AI>>({});
-  const [coins, setCoins] = useState<Record<string, Memecoin>>({});
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [stats, setStats] = useState({ totalVolume: 0, totalTrades: 0, marketHealth: 1.0 });
-  const [marketHealthHistory, setMarketHealthHistory] = useState<{time: string, value: number}[]>([]);
-  const [activeEvent, setActiveEvent] = useState<GlobalEvent | null>(null);
+  const initialState = useMemo(() => {
+    const isActive = getCookie(COOKIE_KEY);
+    if (!isActive) return null;
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return null;
+    try {
+      const parsed = JSON.parse(saved);
+      // If the status was 'ended', we treat it as 'idle' for recovery purposes
+      if (parsed.status === 'ended') return null;
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }, []);
+
+  const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'ended'>(initialState?.status || 'idle');
+  const [ais, setAis] = useState<Record<string, AI>>(initialState?.ais || {});
+  const [coins, setCoins] = useState<Record<string, Memecoin>>(initialState?.coins || {});
+  const [activities, setActivities] = useState<Activity[]>(initialState?.activities || []);
+  const [stats, setStats] = useState(initialState?.stats || { totalVolume: 0, totalTrades: 0, marketHealth: 1.0 });
+  const [marketHealthHistory, setMarketHealthHistory] = useState<{time: string, value: number}[]>(initialState?.marketHealthHistory || []);
+  const [activeEvent, setActiveEvent] = useState<GlobalEvent | null>(initialState?.activeEvent || null);
 
   const aisRef = useRef(ais);
   const coinsRef = useRef(coins);
   const statsRef = useRef(stats);
   const activitiesRef = useRef(activities);
   const activeEventRef = useRef(activeEvent);
+  const statusRef = useRef(status);
 
   // Sync refs
   useEffect(() => { aisRef.current = ais; }, [ais]);
@@ -116,6 +151,7 @@ export const useSimulation = () => {
   useEffect(() => { statsRef.current = stats; }, [stats]);
   useEffect(() => { activitiesRef.current = activities; }, [activities]);
   useEffect(() => { activeEventRef.current = activeEvent; }, [activeEvent]);
+  useEffect(() => { statusRef.current = status; }, [status]);
 
   const addActivity = useCallback((activity: Omit<Activity, 'id' | 'timestamp'>) => {
     const newActivity: Activity = {
@@ -147,7 +183,30 @@ export const useSimulation = () => {
     setMarketHealthHistory([]);
     setActiveEvent(null);
     setStatus('running');
+    
+    setCookie(COOKIE_KEY, 'true', 7);
   }, []);
+
+  const saveToStorage = useCallback(() => {
+    if (statusRef.current === 'idle' || statusRef.current === 'ended') return;
+    const state = {
+      ais: aisRef.current,
+      coins: coinsRef.current,
+      activities: activitiesRef.current,
+      stats: statsRef.current,
+      marketHealthHistory,
+      activeEvent: activeEventRef.current,
+      status: statusRef.current
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, [marketHealthHistory]);
+
+  useEffect(() => {
+    if (status === 'running' || status === 'paused') {
+      const interval = setInterval(saveToStorage, 2000); // Save every 2 seconds
+      return () => clearInterval(interval);
+    }
+  }, [status, saveToStorage]);
 
   const tick = useCallback(() => {
     if (status !== 'running') return;
@@ -463,8 +522,14 @@ export const useSimulation = () => {
   }, [status, initSimulation]);
 
   const pause = useCallback(() => setStatus('paused'), []);
-  const end = useCallback(() => setStatus('ended'), []);
-  const restart = useCallback(() => initSimulation(), [initSimulation]);
+  const end = useCallback(() => {
+    setStatus('ended');
+    deleteCookie(COOKIE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
+  }, []);
+  const restart = useCallback(() => {
+    initSimulation();
+  }, [initSimulation]);
 
   return {
     status,
@@ -478,5 +543,6 @@ export const useSimulation = () => {
     pause,
     end,
     restart,
+    isRecovered: !!getCookie(COOKIE_KEY)
   };
 };
