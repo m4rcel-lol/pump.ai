@@ -91,7 +91,7 @@ const deleteCookie = (name: string) => {
 };
 
 const STORAGE_KEY = 'pump_sim_state';
-const COOKIE_KEY = 'pump_sim_active';
+const ACTIVE_KEY = 'pump_sim_active';
 
 const generateCoinName = (existingCoins: Record<string, Memecoin>) => {
   const prefix = getRandomItem(COIN_PREFIXES);
@@ -116,13 +116,12 @@ const INITIAL_PRICE = INITIAL_POOL_MEOWNEY / INITIAL_POOL_TOKENS;
 
 export const useSimulation = () => {
   const initialState = useMemo(() => {
-    const isActive = getCookie(COOKIE_KEY);
+    const isActive = getCookie(ACTIVE_KEY) || localStorage.getItem(ACTIVE_KEY);
     if (!isActive) return null;
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return null;
     try {
       const parsed = JSON.parse(saved);
-      // If the status was 'ended', we treat it as 'idle' for recovery purposes
       if (parsed.status === 'ended') return null;
       return parsed;
     } catch (e) {
@@ -184,7 +183,8 @@ export const useSimulation = () => {
     setActiveEvent(null);
     setStatus('running');
     
-    setCookie(COOKIE_KEY, 'true', 7);
+    setCookie(ACTIVE_KEY, 'true', 7);
+    localStorage.setItem(ACTIVE_KEY, 'true');
   }, []);
 
   const saveToStorage = useCallback(() => {
@@ -524,12 +524,25 @@ export const useSimulation = () => {
   const pause = useCallback(() => setStatus('paused'), []);
   const end = useCallback(() => {
     setStatus('ended');
-    deleteCookie(COOKIE_KEY);
+    deleteCookie(ACTIVE_KEY);
+    localStorage.removeItem(ACTIVE_KEY);
     localStorage.removeItem(STORAGE_KEY);
   }, []);
   const restart = useCallback(() => {
     initSimulation();
   }, [initSimulation]);
+  const clear = useCallback(() => {
+    setStatus('idle');
+    deleteCookie(ACTIVE_KEY);
+    localStorage.removeItem(ACTIVE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
+    setAis({});
+    setCoins({});
+    setActivities([]);
+    setStats({ totalVolume: 0, totalTrades: 0, marketHealth: 1.0 });
+    setMarketHealthHistory([]);
+    setActiveEvent(null);
+  }, []);
 
   return {
     status,
@@ -543,6 +556,7 @@ export const useSimulation = () => {
     pause,
     end,
     restart,
-    isRecovered: !!getCookie(COOKIE_KEY)
+    clear,
+    isRecovered: !!(getCookie(ACTIVE_KEY) || localStorage.getItem(ACTIVE_KEY))
   };
 };

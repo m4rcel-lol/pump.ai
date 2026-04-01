@@ -49,16 +49,30 @@ type Tab = 'terminal' | 'agents' | 'market';
 type Inspection = { type: 'ai' | 'coin', id: string } | null;
 
 export default function App() {
-  const { status, ais, coins, activities, stats, marketHealthHistory, activeEvent, start, pause, end, restart, isRecovered } = useSimulation();
+  const { status, ais, coins, activities, stats, marketHealthHistory, activeEvent, start, pause, end, restart, clear, isRecovered } = useSimulation();
   const [activeTab, setActiveTab] = useState<Tab>('terminal');
   const [inspection, setInspection] = useState<Inspection>(null);
-  const [showLanding, setShowLanding] = useState(!isRecovered);
+  const [hasEntered, setHasEntered] = useState(false);
+
+  // Sync hasEntered with isRecovered on mount
+  useEffect(() => {
+    if (isRecovered) {
+      setHasEntered(true);
+    }
+  }, [isRecovered]);
+
+  const showLanding = !hasEntered && status === 'idle';
 
   const handleEnterApp = () => {
     if (status === 'idle') {
       start();
     }
-    setShowLanding(false);
+    setHasEntered(true);
+  };
+
+  const handleCloseSummary = () => {
+    clear();
+    // We stay in the app (hasEntered remains true), but in idle state
   };
 
   const { richestAI, topCoin } = useMemo(() => {
@@ -129,7 +143,7 @@ export default function App() {
           <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
                 <div 
-                  onClick={() => setShowLanding(true)}
+                  onClick={() => setHasEntered(false)}
                   className={`w-8 h-8 rounded-lg bg-gradient-to-br ${theme.logoBg} flex items-center justify-center ${theme.logoShadow} transition-all duration-1000 cursor-pointer hover:scale-110 active:scale-95`}
                 >
                   <TrendingUp className="w-5 h-5 text-black" />
@@ -295,12 +309,18 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="p-6 border-t border-gray-800/50 bg-black/40">
+              <div className="p-6 border-t border-gray-800/50 bg-black/40 space-y-3">
                 <button
                   onClick={restart}
                   className="w-full py-3 bg-white hover:bg-gray-200 text-black font-bold rounded-xl transition-all hover:shadow-[0_0_20px_rgba(255,255,255,0.3)] flex items-center justify-center gap-2"
                 >
                   <RotateCcw className="w-5 h-5" /> Start New Simulation
+                </button>
+                <button
+                  onClick={handleCloseSummary}
+                  className="w-full py-3 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white font-medium rounded-xl transition-all border border-gray-800 flex items-center justify-center gap-2"
+                >
+                  <X className="w-5 h-5" /> Close Summary
                 </button>
               </div>
             </motion.div>
